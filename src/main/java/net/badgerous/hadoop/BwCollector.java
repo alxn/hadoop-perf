@@ -26,7 +26,9 @@ import java.io.Closeable;
 import java.io.DataOutput;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.util.concurrent.TimeUnit;
+import net.badgerous.CircularOutputStream;
 import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.io.WritableComparable;
 import org.apache.hadoop.mapred.Counters;
@@ -59,12 +61,17 @@ public class BwCollector
     /**
      * How much data we serialized.
      */
-    private final transient CountingOutputStream counted;
+    private transient CountingOutputStream counted;
 
     /**
      * Hadoop's requirement.
      */
-    private final transient DataOutput dos;
+    private transient DataOutput dos;
+
+    /**
+     * Whether to send to hadoop.
+     */
+    private transient boolean bypass;
 
     /**
      * Whether to bitbucket drop the data.
@@ -93,9 +100,6 @@ public class BwCollector
         final MapTask.MapOutputBuffer<WritableComparable<?>, Writable> hpo
     ) {
         this.hpout = hpo;
-        this.counted = new CountingOutputStream(new NullOutputStream());
-        this.dos = new DataOutputStream(this.counted);
-        this.bitbucket = false;
         this.logger = LoggerFactory.getLogger(BwCollector.class);
     }
 
@@ -107,9 +111,22 @@ public class BwCollector
         this.output = context
             .getReporter()
             .getCounter(TaskCounter.MAP_OUTPUT_BYTES);
+        this.bypass = context
+            .getJobConf()
+            .getBoolean("net.badgerous.hadoop.bypass", false);
         this.bitbucket = context
             .getJobConf()
             .getBoolean("net.badgerous.hadoop.bitbucket", false);
+        if (this.bypass) {
+            final OutputStream output;
+            if (this.bitbucket) {
+                output = new NullOutputStream();
+            } else {
+                output = new CircularOutputStream();
+            }
+            this.counted = new CountingOutputStream(output);
+            this.dos = new DataOutputStream(this.counted);
+        }
         this.logger.info("init complete");
         this.start = System.currentTimeMillis();
     }
@@ -119,7 +136,7 @@ public class BwCollector
         final WritableComparable<?> key, final Writable value,
         final int partition
     ) throws IOException {
-        if (this.bitbucket) {
+        if (this.bypass) {
             key.write(this.dos);
             value.write(this.dos);
             this.dos.write(partition);
@@ -134,15 +151,15 @@ public class BwCollector
         this.counted.close();
         this.hpout.close();
         final long bytes;
-        if (this.bitbucket) {
+        if (this.bypass) {
             bytes = this.counted.getCount();
         } else {
             bytes = this.output.getCounter();
         }
         this.logger.info(
             String.format(
-                "BitBucket:%b Sent %d bytes in %ds => %g Mbps",
-                this.bitbucket, bytes,
+                "Bypass: %b BitBucket:%b Sent %d bytes in %ds => %g Mbps",
+                this.bypass, this.bitbucket, bytes,
                 TimeUnit.MILLISECONDS.toSeconds(end - this.start),
                 (double)(bytes / (end-this.start))
                     * (double) TimeUnit.SECONDS.toMillis(1L)
