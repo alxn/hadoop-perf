@@ -148,10 +148,10 @@ public class BwCollector
     @Override
     public final void close() throws IOException {
         final long end = System.currentTimeMillis();
-        this.counted.close();
         this.hpout.close();
         final long bytes;
         if (this.bypass) {
+            this.counted.close();
             bytes = this.counted.getCount();
         } else {
             bytes = this.output.getCounter();
