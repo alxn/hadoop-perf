@@ -30,17 +30,26 @@ import org.apache.hadoop.mapreduce.Mapper;
  * Tokenize.
  */
 public final class Tokenize extends Mapper<Object, Text, Text, IntWritable> {
+
+    /**
+     * Reusable object.
+     */
+    private final transient Text text = new Text();
+
+    /**
+     * Reusable count.
+     */
+    private final transient IntWritable one = new IntWritable(1);
+
     @Override
     public void map(
         final Object key, final Text value,
         final Mapper<Object, Text, Text, IntWritable>.Context ctx
     ) throws IOException, InterruptedException {
         final StringTokenizer tokens = new StringTokenizer(value.toString());
-        final Text text = new Text();
-        final IntWritable count = new IntWritable(1);
         while (tokens.hasMoreTokens()) {
-            text.set(tokens.nextToken());
-            ctx.write(text, count);
+            this.text.set(tokens.nextToken());
+            ctx.write(this.text, this.one);
         }
     }
 }

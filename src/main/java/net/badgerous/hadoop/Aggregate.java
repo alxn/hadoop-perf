@@ -30,6 +30,12 @@ import org.apache.hadoop.mapreduce.Reducer;
  */
 public final class Aggregate
     extends Reducer<Text, IntWritable, Text, IntWritable> {
+
+    /**
+     * Reusable object.
+     */
+    private final transient IntWritable summation = new IntWritable();
+
     @Override
     public void reduce(
         final Text key, final Iterable<IntWritable> values,
@@ -39,6 +45,7 @@ public final class Aggregate
         for (final IntWritable val : values) {
             sum += val.get();
         }
-        ctx.write(key, new IntWritable(sum));
+        this.summation.set(sum);
+        ctx.write(key, this.summation);
     }
 }
